@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Agent Conversation</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --surface2:  #22263a;
+      --border:    #2e3247;
+      --text:      #e8eaf0;
+      --text-muted:#8b90a8;
+      --accent:    #5c6bc0;
+      --accent-h:  #7986cb;
+      --radius:    12px;
+      --alex:      #4CAF50;
+      --jordan:    #f44336;
+      --morgan:    #2196F3;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    header .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), #9c27b0);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+
+    header h1 { font-size: 18px; font-weight: 600; }
+    header p  { font-size: 12px; color: var(--text-muted); }
+
+    .status-dot {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--text-muted);
+    }
+    .status-dot span {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #666;
+      transition: background 0.3s;
+    }
+    .status-dot.online span  { background: #4caf50; }
+    .status-dot.offline span { background: #f44336; }
+
+    /* ── Main layout ── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow-y: auto;
+    }
+
+    .sidebar-section {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-section h2 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* Topic input */
+    label { font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 6px; }
+
+    textarea#topic {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      padding: 10px 12px;
+      resize: none;
+      height: 90px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea#topic:focus { border-color: var(--accent); }
+
+    /* Rounds control */
+    .rounds-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 14px;
+    }
+    .rounds-row label { margin: 0; }
+
+    .stepper {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .stepper button {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .stepper button:hover { background: var(--accent); border-color: var(--accent); }
+    .stepper span { font-size: 16px; font-weight: 600; min-width: 20px; text-align: center; }
+
+    /* Start / Stop buttons */
+    .btn-primary {
+      margin-top: 14px;
+      width: 100%;
+      padding: 11px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+    .btn-primary:active:not(:disabled) { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-stop {
+      margin-top: 8px;
+      width: 100%;
+      padding: 9px;
+      background: transparent;
+      color: #f44336;
+      border: 1px solid #f44336;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: none;
+    }
+    .btn-stop:hover { background: rgba(244,67,54,0.1); }
+    .btn-stop.visible { display: block; }
+
+    /* Agents list */
+    .agent-card {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .agent-card:last-child { border-bottom: none; }
+
+    .avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .avatar .typing-ring {
+      display: none;
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      border-top-color: inherit;
+      animation: spin 0.8s linear infinite;
+    }
+    .avatar.typing .typing-ring { display: block; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .agent-info { flex: 1; min-width: 0; }
+    .agent-info .name { font-size: 13px; font-weight: 600; }
+    .agent-info .role { font-size: 11px; color: var(--text-muted); }
+
+    .agent-status {
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: var(--surface2);
+    }
+    .agent-status.active { background: rgba(92,107,192,0.2); color: var(--accent-h); }
+
+    /* Progress */
+    .progress-section { padding: 16px 20px; }
+    .progress-label {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: var(--text-muted); margin-bottom: 8px;
+    }
+    .progress-bar-bg {
+      height: 4px; background: var(--surface2); border-radius: 2px;
+    }
+    .progress-bar-fill {
+      height: 4px; border-radius: 2px;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
+
+    /* ── Conversation area ── */
+    .conv-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .conv-header {
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .conv-header h2 { font-size: 15px; font-weight: 600; }
+    .round-badge {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--surface2);
+      color: var(--text-muted);
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      scroll-behavior: smooth;
+    }
+
+    /* Welcome / empty state */
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 12px;
+      color: var(--text-muted);
+    }
+    .empty-state .icon { font-size: 48px; }
+    .empty-state h3 { font-size: 18px; color: var(--text); }
+    .empty-state p  { font-size: 14px; max-width: 340px; line-height: 1.6; }
+
+    /* System messages */
+    .msg-system {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 6px 16px;
+      background: var(--surface2);
+      border-radius: 20px;
+      align-self: center;
+    }
+
+    /* Agent message bubble */
+    .msg-agent {
+      display: flex;
+      gap: 12px;
+      max-width: 780px;
+      align-self: flex-start;
+      width: 100%;
+    }
+
+    .msg-avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .msg-body { flex: 1; min-width: 0; }
+
+    .msg-meta {
+      display: flex; align-items: baseline; gap: 8px;
+      margin-bottom: 6px;
+    }
+    .msg-meta .name { font-size: 14px; font-weight: 600; }
+    .msg-meta .role {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 500;
+      opacity: 0.85;
+    }
+    .msg-meta .ts { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+
+    .msg-bubble {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0 var(--radius) var(--radius) var(--radius);
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Typing cursor */
+    .cursor {
+      display: inline-block;
+      width: 2px; height: 14px;
+      background: var(--text);
+      border-radius: 1px;
+      vertical-align: middle;
+      margin-left: 2px;
+      animation: blink 0.9s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* Error message */
+    .msg-error {
+      background: rgba(244,67,54,0.12);
+      border: 1px solid rgba(244,67,54,0.4);
+      color: #ef9a9a;
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 14px;
+    }
+
+    /* Scrollbar */
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<header>
+  <div class="logo">🤖</div>
+  <div>
+    <h1>AI Agent Conversation</h1>
+    <p>Powered by Ollama · gemma3:4b</p>
+  </div>
+  <div class="status-dot offline" id="statusDot">
+    <span></span>
+    <span id="statusLabel">Connecting…</span>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+
+    <!-- Controls -->
+    <div class="sidebar-section">
+      <h2>New Discussion</h2>
+
+      <label for="topic">Topic</label>
+      <textarea id="topic" placeholder="e.g. Should AI replace human doctors?"></textarea>
+
+      <div class="rounds-row">
+        <label>Rounds</label>
+        <div class="stepper">
+          <button onclick="changeRounds(-1)">−</button>
+          <span id="roundsDisplay">3</span>
+          <button onclick="changeRounds(+1)">+</button>
+        </div>
+      </div>
+
+      <button class="btn-primary" id="startBtn" onclick="startConversation()">
+        ▶ Start Discussion
+      </button>
+      <button class="btn-stop" id="stopBtn" onclick="stopConversation()">
+        ■ Stop
+      </button>
+    </div>
+
+    <!-- Agents -->
+    <div class="sidebar-section" id="agentsSection">
+      <h2>Agents</h2>
+      <div id="agentsList">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-section">
+      <div class="progress-label">
+        <span>Progress</span>
+        <span id="progressLabel">—</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Conversation -->
+  <div class="conv-area">
+    <div class="conv-header">
+      <h2 id="convTitle">No topic selected</h2>
+      <div class="round-badge" id="roundBadge">—</div>
+    </div>
+    <div id="messages">
+      <div class="empty-state" id="emptyState">
+        <div class="icon">💬</div>
+        <h3>Start a Discussion</h3>
+        <p>Enter a topic on the left, choose the number of rounds, and click <strong>Start Discussion</strong>. The three AI agents will debate and discuss the topic in real time.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Config ─────────────────────────────────────────────────
+  const WS_URL    = 'ws://localhost:8000/ws/conversation';
+  const HEALTH_URL = 'http://localhost:8000/health';
+
+  // ── State ──────────────────────────────────────────────────
+  let ws          = null;
+  let rounds      = 3;
+  let totalTurns  = 0;
+  let doneTurns   = 0;
+  let currentBubble = null;   // the <p> being streamed into
+  let agents      = {};       // agent_id → {name, role, color, avatar}
+
+  // ── Health check ───────────────────────────────────────────
+  async function checkHealth() {
+    try {
+      const r = await fetch(HEALTH_URL, { signal: AbortSignal.timeout(3000) });
+      const data = await r.json();
+      const dot = document.getElementById('statusDot');
+      const lbl = document.getElementById('statusLabel');
+      if (data.ollama?.ollama_running && data.ollama?.model_ready) {
+        dot.className = 'status-dot online';
+        lbl.textContent = 'Ready';
+      } else if (data.ollama?.ollama_running) {
+        dot.className = 'status-dot offline';
+        lbl.textContent = 'Model not loaded';
+      } else {
+        dot.className = 'status-dot offline';
+        lbl.textContent = 'Ollama offline';
+      }
+    } catch {
+      document.getElementById('statusDot').className = 'status-dot offline';
+      document.getElementById('statusLabel').textContent = 'Backend offline';
+    }
+  }
+  checkHealth();
+  setInterval(checkHealth, 10000);
+
+  // ── Rounds stepper ─────────────────────────────────────────
+  function changeRounds(delta) {
+    rounds = Math.max(1, Math.min(10, rounds + delta));
+    document.getElementById('roundsDisplay').textContent = rounds;
+  }
+
+  // ── Agent sidebar rendering ────────────────────────────────
+  function renderAgents(agentList) {
+    agents = {};
+    agentList.forEach(a => { agents[a.id] = a; });
+
+    const container = document.getElementById('agentsList');
+    container.innerHTML = agentList.map(a => `
+      <div class="agent-card" id="card-${a.id}">
+        <div class="avatar" id="av-${a.id}" style="background:${a.color}20; color:${a.color}; border: 2px solid ${a.color}40">
+          ${a.avatar}
+          <div class="typing-ring" style="border-top-color:${a.color}"></div>
+        </div>
+        <div class="agent-info">
+          <div class="name">${a.name}</div>
+          <div class="role">${a.role}</div>
+        </div>
+        <div class="agent-status" id="st-${a.id}">idle</div>
+      </div>
+    `).join('');
+  }
+
+  function setAgentStatus(id, status) {
+    const st = document.getElementById(`st-${id}`);
+    const av = document.getElementById(`av-${id}`);
+    if (!st || !av) return;
+    if (status === 'typing') {
+      st.textContent = 'speaking…';
+      st.className = 'agent-status active';
+      av.classList.add('typing');
+    } else {
+      st.textContent = status;
+      st.className = 'agent-status';
+      av.classList.remove('typing');
+    }
+  }
+
+  // ── Messages ───────────────────────────────────────────────
+  function removeEmptyState() {
+    const es = document.getElementById('emptyState');
+    if (es) es.remove();
+  }
+
+  function addSystemMsg(text) {
+    const el = document.createElement('div');
+    el.className = 'msg-system';
+    el.textContent = text;
+    document.getElementById('messages').appendChild(el);
+    scrollBottom();
+  }
+
+  function addErrorMsg(text) {
+    removeEmptyState();
+    const el = document.createElement('div');
+    el.className = 'msg-error';
+    el.textContent = '⚠ ' + text;
+    document.getElementById('messages').appendChild(el);
+    scrollBottom();
+  }
+
+  function startAgentBubble(agent) {
+    removeEmptyState();
+    const msgs = document.getElementById('messages');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-agent';
+    wrap.id = 'bubble-' + agent.agent_id;
+
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    wrap.innerHTML = `
+      <div class="msg-avatar" style="background:${agent.color}20; color:${agent.color}; border:2px solid ${agent.color}40">
+        ${agent.avatar}
+      </div>
+      <div class="msg-body">
+        <div class="msg-meta">
+          <span class="name" style="color:${agent.color}">${agent.name}</span>
+          <span class="role" style="background:${agent.color}20; color:${agent.color}">${agent.role}</span>
+          <span class="ts">${now}</span>
+        </div>
+        <div class="msg-bubble"><span class="content"></span><span class="cursor"></span></div>
+      </div>
+    `;
+
+    msgs.appendChild(wrap);
+    currentBubble = wrap.querySelector('.content');
+    scrollBottom();
+  }
+
+  function appendToken(agentId, token) {
+    if (currentBubble) {
+      currentBubble.textContent += token;
+      scrollBottom();
+    }
+  }
+
+  function finishBubble(agentId) {
+    const wrap = document.getElementById('bubble-' + agentId);
+    if (wrap) {
+      const cursor = wrap.querySelector('.cursor');
+      if (cursor) cursor.remove();
+    }
+    currentBubble = null;
+  }
+
+  function scrollBottom() {
+    const msgs = document.getElementById('messages');
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // ── Progress ───────────────────────────────────────────────
+  function updateProgress(done, total) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressLabel').textContent = `${done} / ${total} turns`;
+  }
+
+  // ── Conversation control ───────────────────────────────────
+  function startConversation() {
+    const topic = document.getElementById('topic').value.trim();
+    if (!topic) {
+      alert('Please enter a topic first.');
+      return;
+    }
+
+    // Reset UI
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('convTitle').textContent = topic;
+    document.getElementById('roundBadge').textContent = '—';
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('stopBtn').classList.add('visible');
+    currentBubble = null;
+    doneTurns = 0;
+
+    // Open WebSocket
+    if (ws) ws.close();
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ topic, rounds }));
+    };
+
+    ws.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
+      handleMessage(msg);
+    };
+
+    ws.onerror = () => {
+      addErrorMsg('WebSocket error — is the backend running? (python backend/main.py)');
+      resetControls();
+    };
+
+    ws.onclose = () => {
+      resetControls();
+    };
+  }
+
+  function stopConversation() {
+    if (ws) ws.close();
+    addSystemMsg('Discussion stopped by user.');
+    resetControls();
+  }
+
+  function resetControls() {
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').classList.remove('visible');
+    Object.keys(agents).forEach(id => setAgentStatus(id, 'idle'));
+    ws = null;
+  }
+
+  function handleMessage(msg) {
+    switch (msg.type) {
+
+      case 'start':
+        totalTurns = msg.rounds * msg.agents.length;
+        renderAgents(msg.agents);
+        addSystemMsg(`Discussion started · ${msg.rounds} round${msg.rounds > 1 ? 's' : ''} · ${msg.agents.length} agents`);
+        updateProgress(0, totalTurns);
+        break;
+
+      case 'round':
+        document.getElementById('roundBadge').textContent = `Round ${msg.round} / ${msg.total}`;
+        addSystemMsg(`── Round ${msg.round} ──`);
+        break;
+
+      case 'agent_start':
+        setAgentStatus(msg.agent_id, 'typing');
+        startAgentBubble(msg);
+        break;
+
+      case 'token':
+        appendToken(msg.agent_id, msg.token);
+        break;
+
+      case 'agent_done':
+        finishBubble(msg.agent_id);
+        setAgentStatus(msg.agent_id, 'done');
+        doneTurns++;
+        updateProgress(doneTurns, totalTurns);
+        break;
+
+      case 'error':
+        addErrorMsg(msg.message);
+        resetControls();
+        break;
+
+      case 'done':
+        addSystemMsg(`✓ Discussion complete — ${msg.total_turns} turns`);
+        updateProgress(totalTurns, totalTurns);
+        resetControls();
+        checkHealth();
+        break;
+    }
+  }
+</script>
+</body>
+</html>

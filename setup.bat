@@ -1,57 +1,30 @@
 @echo off
 title AI Agent Setup
-color 0B
+cd /d %~dp0
+echo ============================================
+echo   Local AI Agent - First-Time Setup 首次安裝
+echo ============================================
 
-echo.
-echo  ============================================
-echo   AI Agent Conversation - First-Time Setup
-echo  ============================================
-echo.
+python --version >nul 2>&1 || (echo [ERROR] Python 3.10+ required: https://www.python.org/downloads/ & pause & exit /b 1)
+echo [OK] Python found
+pip install -r backend\requirements.txt || (echo [ERROR] pip install failed & pause & exit /b 1)
 
-REM Check Python
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo [ERROR] Python 3.10+ is required.
-    echo         Download at: https://www.python.org/downloads/
-    echo         Make sure to check "Add Python to PATH" during install.
-    pause
-    exit /b 1
-)
-for /f "tokens=*" %%i in ('python --version') do echo [OK] %%i
+node --version >nul 2>&1 || (echo [ERROR] Node.js 20+ required: https://nodejs.org/ & pause & exit /b 1)
+echo [OK] Node.js found
+pushd frontend
+call npm install || (echo [ERROR] npm install failed & popd & pause & exit /b 1)
+call npm run build || (echo [ERROR] build failed & popd & pause & exit /b 1)
+popd
+echo [OK] Frontend built (frontend\dist)
 
-REM Install deps
-echo.
-echo [INFO] Installing Python packages (fastapi, uvicorn, httpx)...
-pip install fastapi "uvicorn[standard]" httpx websockets
-if errorlevel 1 (
-    echo [ERROR] pip install failed. Try running as Administrator.
-    pause
-    exit /b 1
-)
-echo [OK] Python packages installed
-
-REM Check Ollama
-echo.
 ollama --version >nul 2>&1
 if errorlevel 1 (
-    echo [WARNING] Ollama is not installed.
-    echo.
-    echo  Please:
-    echo   1. Download Ollama from https://ollama.com/download/windows
-    echo   2. Install it (it adds itself to PATH)
-    echo   3. Run this setup again  -OR-  run: ollama pull gemma3:4b
-    echo.
+  echo [WARNING] Ollama not installed: https://ollama.com/download/windows
 ) else (
-    for /f "tokens=*" %%i in ('ollama --version') do echo [OK] %%i
-    echo [INFO] Pulling gemma3:4b model (may take several minutes)...
-    ollama pull gemma3:4b
-    echo [OK] Model ready
+  echo [INFO] Pulling models 下載模型 ...
+  ollama pull qwen3:8b
+  ollama pull gemma3:4b
 )
-
 echo.
-echo  ============================================
-echo   Setup complete!
-echo   Run start.bat to launch the application.
-echo  ============================================
-echo.
+echo Setup complete. Run start.bat  安裝完成，請執行 start.bat
 pause

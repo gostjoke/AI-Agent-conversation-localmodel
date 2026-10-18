@@ -1,224 +1,203 @@
 """
-AI Agent Conversation Backend
-FastAPI + WebSocket server that orchestrates multi-agent discussions via Ollama.
+AI Agent backend — FastAPI.
+AI Agent 後端 —— FastAPI。
+
+  POST /api/chat          Assistant agent, SSE stream   助手 agent（SSE 串流）
+  GET  /api/models        Installed Ollama models       已安裝模型
+  GET  /api/tools         Available agent tools         可用工具
+  GET  /health            Ollama status                 Ollama 狀態
+  WS   /ws/conversation   3-agent debate                三人辯論
+  /                       React build (frontend/dist)   前端打包檔
 """
 
 import asyncio
 import json
 import logging
+import os
+from pathlib import Path
 from typing import AsyncIterator
 
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from agents import AGENTS, build_agent_prompt
+from assistant import DEFAULT_SYSTEM_PROMPT, run_assistant
+from tools import WORKSPACE, tool_list
 
-# ── Configuration ────────────────────────────────────────────────────────────
-OLLAMA_BASE_URL = "http://localhost:11434"
-MODEL_NAME = "gemma3:4b"
-DEFAULT_ROUNDS = 3          # How many full rounds (each agent speaks once per round)
-REQUEST_TIMEOUT = 120.0     # seconds
+# ── Configuration 設定（可用環境變數覆蓋）────────────────────────────────────
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+ASSISTANT_MODEL = os.getenv("ASSISTANT_MODEL", "qwen3:8b")   # needs tool support 需支援工具
+DEBATE_MODEL = os.getenv("DEBATE_MODEL", "gemma3:4b")
+DEFAULT_ROUNDS = 3
+REQUEST_TIMEOUT = 300.0
+PORT = int(os.getenv("PORT", "8000"))
+DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
-# ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
-# ── App ───────────────────────────────────────────────────────────────────────
-app = FastAPI(title="AI Agent Conversation", version="1.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="Local AI Agent", version="2.0.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 # ── Ollama helpers ────────────────────────────────────────────────────────────
 
-async def check_ollama() -> dict:
-    """Check if Ollama is running and the model is available."""
+async def ollama_models() -> dict:
     async with httpx.AsyncClient(timeout=5.0) as client:
         try:
             r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             r.raise_for_status()
-            models = [m["name"] for m in r.json().get("models", [])]
-            model_ready = any(MODEL_NAME in m for m in models)
-            return {"ollama_running": True, "model_ready": model_ready, "models": models}
+            models = [{"name": m["name"], "size": m.get("size", 0),
+                       "family": m.get("details", {}).get("family", ""),
+                       "params": m.get("details", {}).get("parameter_size", "")}
+                      for m in r.json().get("models", [])]
+            return {"ollama_running": True, "models": models}
         except Exception as e:
-            return {"ollama_running": False, "model_ready": False, "error": str(e)}
+            return {"ollama_running": False, "models": [], "error": str(e)}
 
 
-async def stream_ollama_response(messages: list[dict]) -> AsyncIterator[str]:
-    """Stream a response from Ollama token by token."""
-    payload = {
-        "model": MODEL_NAME,
-        "messages": messages,
-        "stream": True,
-        "options": {
-            "temperature": 0.8,
-            "top_p": 0.9,
-            "num_predict": 300,
-        },
-    }
+def _has_model(models: list[dict], name: str) -> bool:
+    return any(m["name"] == name or m["name"].split(":")[0] == name for m in models)
 
+
+async def stream_ollama_response(messages: list[dict], model: str) -> AsyncIterator[str]:
+    payload = {"model": model, "messages": messages, "stream": True,
+               "options": {"temperature": 0.8, "top_p": 0.9, "num_predict": 300}}
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-        async with client.stream(
-            "POST",
-            f"{OLLAMA_BASE_URL}/api/chat",
-            json=payload,
-        ) as response:
+        async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/chat", json=payload) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
                 try:
                     data = json.loads(line)
-                    token = data.get("message", {}).get("content", "")
-                    if token:
-                        yield token
-                    if data.get("done"):
-                        break
                 except json.JSONDecodeError:
                     continue
+                token = data.get("message", {}).get("content", "")
+                if token:
+                    yield token
+                if data.get("done"):
+                    break
 
 
-# ── REST endpoints ────────────────────────────────────────────────────────────
+# ── REST ──────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    status = await check_ollama()
-    return {"status": "ok", "ollama": status}
+    s = await ollama_models()
+    return {"status": "ok", "ollama": {**s, "assistant_model": ASSISTANT_MODEL,
+                                       "assistant_ready": _has_model(s["models"], ASSISTANT_MODEL)}}
+
+
+@app.get("/api/models")
+async def api_models():
+    s = await ollama_models()
+    return {**s, "default_assistant": ASSISTANT_MODEL, "default_debate": DEBATE_MODEL}
+
+
+@app.get("/api/tools")
+async def api_tools():
+    return {"tools": tool_list(), "workspace": str(WORKSPACE),
+            "default_system_prompt": DEFAULT_SYSTEM_PROMPT}
 
 
 @app.get("/agents")
 async def list_agents():
-    return {"agents": [
-        {"id": a["id"], "name": a["name"], "role": a["role"], "color": a["color"], "avatar": a["avatar"]}
-        for a in AGENTS
-    ]}
+    return {"agents": [{k: a[k] for k in ("id", "name", "role", "color", "avatar")} for a in AGENTS]}
 
 
-# ── WebSocket conversation endpoint ──────────────────────────────────────────
+class ChatRequest(BaseModel):
+    messages: list[dict]                 # [{role: user|assistant, content}]
+    model: str | None = None
+    system_prompt: str | None = None
+    tools: list[str] | None = None       # None = all, [] = none 全部 / 不使用
+    think: bool = False
+    temperature: float = 0.7
+
+
+@app.post("/api/chat")
+async def api_chat(req: ChatRequest):
+    """SSE stream: each line `data: {json event}`. 每行一個 JSON 事件。"""
+    async def gen():
+        try:
+            async for ev in run_assistant(
+                OLLAMA_BASE_URL, req.model or ASSISTANT_MODEL, req.messages,
+                req.system_prompt, req.tools, req.think, req.temperature, REQUEST_TIMEOUT,
+            ):
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        except httpx.ConnectError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Ollama 未啟動 (not running): ollama serve'})}\n\n"
+        except Exception as e:
+            log.error("chat error: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── WebSocket debate 辯論 ─────────────────────────────────────────────────────
 
 @app.websocket("/ws/conversation")
 async def conversation_ws(websocket: WebSocket):
     await websocket.accept()
-    log.info("WebSocket connected")
-
     try:
-        # Receive the start payload from client
-        raw = await websocket.receive_text()
-        payload = json.loads(raw)
+        payload = json.loads(await websocket.receive_text())
         topic = payload.get("topic", "").strip()
-        rounds = int(payload.get("rounds", DEFAULT_ROUNDS))
-        rounds = max(1, min(rounds, 10))  # clamp 1-10
+        rounds = max(1, min(int(payload.get("rounds", DEFAULT_ROUNDS)), 10))
+        model = payload.get("model") or DEBATE_MODEL
 
         if not topic:
             await websocket.send_json({"type": "error", "message": "Topic cannot be empty."})
             return
-
-        # Check Ollama availability
-        status = await check_ollama()
-        if not status["ollama_running"]:
-            await websocket.send_json({
-                "type": "error",
-                "message": "Ollama is not running. Please start Ollama and try again.",
-            })
+        s = await ollama_models()
+        if not s["ollama_running"]:
+            await websocket.send_json({"type": "error", "message": "Ollama is not running."})
             return
-        if not status["model_ready"]:
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Model '{MODEL_NAME}' not found. Run: ollama pull {MODEL_NAME}",
-            })
+        if not _has_model(s["models"], model):
+            await websocket.send_json({"type": "error", "message": f"Model '{model}' not found. Run: ollama pull {model}"})
             return
 
-        # Notify client that we're starting
-        await websocket.send_json({
-            "type": "start",
-            "topic": topic,
-            "rounds": rounds,
-            "agents": [
-                {"id": a["id"], "name": a["name"], "role": a["role"],
-                 "color": a["color"], "avatar": a["avatar"]}
-                for a in AGENTS
-            ],
-        })
-
+        meta = lambda a: {k: a[k] for k in ("id", "name", "role", "color", "avatar")}
+        await websocket.send_json({"type": "start", "topic": topic, "rounds": rounds,
+                                   "agents": [meta(a) for a in AGENTS]})
         history: list[dict] = []
-
-        for round_num in range(1, rounds + 1):
-            await websocket.send_json({"type": "round", "round": round_num, "total": rounds})
-
+        for rnd in range(1, rounds + 1):
+            await websocket.send_json({"type": "round", "round": rnd, "total": rounds})
             for agent in AGENTS:
-                # Signal that this agent is about to speak
-                await websocket.send_json({
-                    "type": "agent_start",
-                    "agent_id": agent["id"],
-                    "name": agent["name"],
-                    "role": agent["role"],
-                    "color": agent["color"],
-                    "avatar": agent["avatar"],
-                    "round": round_num,
-                })
-
-                messages = build_agent_prompt(agent, topic, history)
-                full_response = ""
-
+                await websocket.send_json({"type": "agent_start", "agent_id": agent["id"], "round": rnd, **meta(agent)})
+                full = ""
                 try:
-                    async for token in stream_ollama_response(messages):
-                        full_response += token
-                        await websocket.send_json({
-                            "type": "token",
-                            "agent_id": agent["id"],
-                            "token": token,
-                        })
+                    async for token in stream_ollama_response(build_agent_prompt(agent, topic, history), model):
+                        full += token
+                        await websocket.send_json({"type": "token", "agent_id": agent["id"], "token": token})
                 except Exception as e:
-                    log.error(f"Error streaming from Ollama: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": f"Error generating response for {agent['name']}: {str(e)}",
-                    })
+                    await websocket.send_json({"type": "error", "message": f"{agent['name']}: {e}"})
                     return
-
-                # Save to history
-                history.append({
-                    "agent_id": agent["id"],
-                    "name": agent["name"],
-                    "role": agent["role"],
-                    "content": full_response.strip(),
-                })
-
-                await websocket.send_json({
-                    "type": "agent_done",
-                    "agent_id": agent["id"],
-                    "content": full_response.strip(),
-                })
-
-                # Small pause between agents for readability
-                await asyncio.sleep(0.5)
-
-        # Conversation complete
-        await websocket.send_json({
-            "type": "done",
-            "message": "Discussion complete.",
-            "total_turns": len(history),
-        })
-        log.info(f"Conversation finished: {len(history)} turns on topic '{topic}'")
-
+                history.append({"agent_id": agent["id"], "name": agent["name"],
+                                "role": agent["role"], "content": full.strip()})
+                await websocket.send_json({"type": "agent_done", "agent_id": agent["id"], "content": full.strip()})
+                await asyncio.sleep(0.3)
+        await websocket.send_json({"type": "done", "total_turns": len(history)})
     except WebSocketDisconnect:
-        log.info("WebSocket disconnected by client")
+        log.info("WebSocket disconnected")
     except Exception as e:
-        log.error(f"Unexpected error: {e}", exc_info=True)
+        log.error("WS error: %s", e, exc_info=True)
         try:
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
             pass
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Serve React build 提供前端打包檔 (after `npm run build`) ──────────────────
+if DIST_DIR.exists():
+    app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False, log_level="info")
+    os.chdir(Path(__file__).parent)
+    uvicorn.run("main:app", host="127.0.0.1", port=PORT, reload=False, log_level="info")

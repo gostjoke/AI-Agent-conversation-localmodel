@@ -1,0 +1,48 @@
+/* Layout 版面 */
+html, body, #root { height: 100%; margin: 0; }
+.app { height: 100vh; }
+.app-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  height: 56px; padding: 0 16px; line-height: normal;
+  background: var(--ant-color-bg-container, #fff); border-bottom: 1px solid rgba(128,128,128,.18);
+}
+.logo {
+  width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center;
+  color: #fff; background: linear-gradient(135deg, #5b5bd6, #9e4ad6); font-size: 17px;
+}
+.app-content { height: calc(100vh - 56px); overflow: hidden; }
+
+/* Chat 對話頁 */
+.chat-page { display: flex; height: 100%; }
+.chat-sider { width: 264px; flex-shrink: 0; border-right: 1px solid rgba(128,128,128,.18); padding: 12px; overflow-y: auto; }
+.conv-nav { display: flex; flex-direction: column; gap: 10px; }
+.conv-list { padding: 0; width: 100%; }
+.chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 16px; border-bottom: 1px solid rgba(128,128,128,.12); }
+.chat-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.bubble-list { flex: 1; min-height: 0; padding: 16px max(16px, calc((100% - 860px) / 2)); }
+.welcome-wrap { max-width: 760px; width: 100%; margin: auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
+.chat-sender { max-width: 860px; width: 100%; margin: 0 auto; padding: 8px 16px 12px; box-sizing: border-box; }
+.chat-sender .hint { display: block; text-align: center; font-size: 12px; margin-top: 6px; }
+.ai-avatar { background: linear-gradient(135deg, #5b5bd6, #9e4ad6) !important; }
+.user-text { white-space: pre-wrap; word-break: break-word; }
+.ai-content { display: flex; flex-direction: column; gap: 10px; min-width: 0; max-width: 100%; }
+.think-text { white-space: pre-wrap; font-size: 13px; opacity: .75; }
+.tool-result { margin: 0; max-height: 260px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.notice { padding: 4px 10px; }
+
+/* Markdown */
+.md { line-height: 1.7; word-break: break-word; }
+.md > :first-child { margin-top: 0; } .md > :last-child { margin-bottom: 0; }
+.md table { border-collapse: collapse; margin: 8px 0; display: block; overflow-x: auto; }
+.md th, .md td { border: 1px solid rgba(128,128,128,.3); padding: 4px 10px; }
+.md code.inline { background: rgba(128,128,128,.15); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+
+/* Debate 辯論頁 */
+.debate-page { max-width: 900px; margin: 0 auto; height: 100%; display: flex; flex-direction: column; padding: 16px; box-sizing: border-box; }
+.debate-list { flex: 1; overflow-y: auto; padding-top: 16px; }
+
+@media (max-width: 767px) {
+  .app-header .ant-badge-status-text { display: none; }
+  .debate-form { flex-wrap: wrap; }
+}
