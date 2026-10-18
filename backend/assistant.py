@@ -11,6 +11,7 @@ Event types 事件類型:
   done / error
 """
 
+import asyncio
 import json
 import logging
 from typing import AsyncIterator
@@ -26,6 +27,8 @@ MAX_STEPS = 6  # max tool rounds per user message 每則訊息最多工具回合
 DEFAULT_SYSTEM_PROMPT = (
     "You are a helpful local AI assistant for an IT specialist in electronics manufacturing. "
     "Answer concisely. Use tools when they help (time, math, files in the workspace); "
+    "for questions about internal documents/SOPs call search_docs, and search again with refined "
+    "keywords (synonyms, English/Chinese, exact codes) if results are weak; cite [source#chunk]. "
     "never invent tool results. Reply in the user's language (繁體中文 if the user writes Chinese)."
 )
 
@@ -117,7 +120,8 @@ async def run_assistant(
                 call_seq += 1
                 cid = f"call_{call_seq}"
                 yield {"type": "tool_start", "id": cid, "name": name, "args": args}
-                result = run_tool(name, args)
+                # thread: DB / reranker tools must not block the event loop 避免阻塞事件迴圈
+                result = await asyncio.to_thread(run_tool, name, args)
                 log.info("tool %s(%s) -> %s", name, args, result[:120])
                 yield {"type": "tool_end", "id": cid, "name": name, "result": result}
                 convo.append({"role": "tool", "tool_name": name, "content": result})

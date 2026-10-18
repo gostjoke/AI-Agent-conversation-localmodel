@@ -19,7 +19,7 @@ html, body, #root { height: 100%; margin: 0; }
 .conv-list { padding: 0; width: 100%; }
 .chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat-toolbar { display: flex; align-items: center; gap: 4px; padding: 8px 16px; border-bottom: 1px solid rgba(128,128,128,.12); }
-.chat-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
 .bubble-list { flex: 1; min-height: 0; padding: 16px max(16px, calc((100% - 860px) / 2)); }
 .welcome-wrap { max-width: 760px; width: 100%; margin: auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 24px; }
 .chat-sender { max-width: 860px; width: 100%; margin: 0 auto; padding: 8px 16px 12px; box-sizing: border-box; }
@@ -46,3 +46,40 @@ html, body, #root { height: 100%; margin: 0; }
   .app-header .ant-badge-status-text { display: none; }
   .debate-form { flex-wrap: wrap; }
 }
+
+/* Floating chat widget 浮動對話框 */
+.cw-fab {
+  position: fixed; right: 24px; bottom: 24px; z-index: 1001;
+  border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%;
+}
+.cw-fab-avatar { box-shadow: 0 6px 20px rgba(91, 91, 214, .45); transition: transform .2s; font-size: 24px !important; }
+.cw-fab:hover .cw-fab-avatar { transform: scale(1.08); }
+.cw-fab:focus-visible { outline: 3px solid #5b5bd6; outline-offset: 3px; }
+.cw-fab-hint {
+  position: absolute; right: -2px; bottom: -2px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; color: #5b5bd6; background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25); pointer-events: none;
+}
+.cw-panel {
+  position: fixed; right: 24px; bottom: 96px; z-index: 1000;
+  width: 400px; height: min(600px, calc(100vh - 140px));
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid; border-radius: 16px;
+  animation: cw-in .18s ease-out; transform-origin: bottom right;
+}
+@keyframes cw-in { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+.cw-header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid; }
+.cw-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.cw-model { margin: 0; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.cw-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cw-list { flex: 1; min-height: 0; padding: 12px; }
+.cw-empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.cw-sender { padding: 8px 10px 10px; }
+
+@media (max-width: 767px) {
+  .cw-panel { right: 8px; left: 8px; width: auto; bottom: 88px; height: calc(100vh - 150px); }
+  .cw-fab { right: 16px; bottom: 16px; }
+}
+/* Keep FAB from covering the chat input 避免浮動頭像擋住輸入框 */
+@media (max-width: 1359px) { .chat-sender { padding-right: 88px; } }
+@media (max-width: 767px) { .brand-text { display: none; } .chat-sender { padding-right: 80px; } }

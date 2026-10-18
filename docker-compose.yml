@@ -13,15 +13,44 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        WITH_RERANK: ${WITH_RERANK:-0}   # 1 = install bge-reranker deps 安裝重排序
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       ASSISTANT_MODEL: ${ASSISTANT_MODEL:-qwen3:8b}
       DEBATE_MODEL: ${DEBATE_MODEL:-gemma3:4b}
+      DATABASE_URL: postgresql://agent:${DB_PASSWORD:-agent}@db:5432/agent
+      RAG_MODE: ${RAG_MODE:-keyword}
+      RAG_EMBED_MODEL: ${RAG_EMBED_MODEL:-bge-m3}
+      RAG_EMBED_DIM: ${RAG_EMBED_DIM:-1024}
+      RAG_RERANKER: ${RAG_RERANKER:-}
+    depends_on:
+      db:
+        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"   # reach host Ollama on Linux too Linux 也能連主機
     volumes:
       - agent-workspace:/data/workspace      # sandbox files persist 沙盒檔案持久化
+      - hf-cache:/data/hf                    # reranker model cache 重排序模型快取
+    restart: unless-stopped
+
+  # PostgreSQL + pgvector: one DB for vectors + full-text (no Milvus/Qdrant) 單一資料庫搞定向量與全文檢索
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agent}
+      POSTGRES_DB: agent
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"   # localhost only, for start.bat / CLI 僅本機
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent"]
+      interval: 5s
+      retries: 10
     restart: unless-stopped
 
   # Optional: Ollama in Docker with GPU. 選用：容器內 Ollama（GPU）
@@ -42,4 +71,6 @@ services:
 
 volumes:
   agent-workspace:
+  hf-cache:
+  pgdata:
   ollama-models:

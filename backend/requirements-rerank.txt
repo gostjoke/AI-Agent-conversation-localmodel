@@ -1,0 +1,4 @@
+# Optional: local cross-encoder reranker (bge-reranker). 選用：本地重排序模型
+# Windows + RTX GPU: install CUDA torch first 先裝 CUDA 版 torch:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+sentence-transformers>=3.0

@@ -17,11 +17,13 @@ const PROMPTS = [
   { key: 'p1', icon: <ClockCircleOutlined />, label: '現在幾點？', description: 'What time is it? (tool: time)' },
   { key: 'p2', icon: <CalculatorOutlined />, label: '1250 pcs × $0.85，再加 9.375% 稅是多少？', description: 'Exact math (tool: calculator)' },
   { key: 'p3', icon: <FileSearchOutlined />, label: '列出 workspace 的檔案並摘要內容', description: 'Read files (tools: list/read)' },
-  { key: 'p4', icon: <ToolOutlined />, label: '寫一個 SQL Server 查詢：找出最近 30 天未結的 PO', description: 'Code / SQL help' },
+  { key: 'p4', icon: <ToolOutlined />, label: '查詢：找出最近 30 天未結的 PO', description: 'Code / SQL help' },
+  { key: 'p5', icon: <ToolOutlined />, label: '查詢：找出最近 30 天未結的 WO', description: 'Code / SQL help' },
+  { key: 'p6', icon: <ToolOutlined />, label: '查詢：找出最近 30 天未結的 Serial Number', description: 'Code / SQL help' },
 ];
 
 // Reduce one stream event into the AI message. 將串流事件合併到 AI 訊息。
-function applyEvent(m, ev) {
+export function applyEvent(m, ev) {
   switch (ev.type) {
     case 'thinking': return { ...m, status: 'updating', thinking: m.thinking + ev.delta };
     case 'token': return { ...m, status: 'updating', content: m.content + ev.delta };
@@ -34,7 +36,7 @@ function applyEvent(m, ev) {
   }
 }
 
-function AiContent({ m, toolLabels, dark }) {
+export function AiContent({ m, toolLabels, dark }) {
   const busy = m.status === 'loading' || m.status === 'updating';
   return (
     <div className="ai-content">
@@ -246,8 +248,8 @@ export default function ChatPage({ dark }) {
               <Welcome
                 variant="borderless"
                 icon={<Avatar size={56} className="ai-avatar" icon={<RobotOutlined />} />}
-                title="你好，我是你的本地 AI 助手"
-                description="Runs 100% locally on Ollama — 會使用工具（時間、計算、讀寫沙盒檔案），資料不離開你的電腦。"
+                title="你好，我是 Will Hsu AI assistant"
+                description="Runs 100% on a local model — 會使用工具（時間、計算、讀寫沙盒檔案），資料不離開你的電腦。"
               />
               <Prompts
                 title="試試看 Try:"

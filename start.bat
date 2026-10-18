@@ -10,6 +10,10 @@ if errorlevel 1 (
   timeout /t 3 /nobreak >nul
 )
 
+REM RAG database (pgvector) 啟動資料庫；沒有 Docker 則 RAG 自動停用
+if not defined DATABASE_URL set DATABASE_URL=postgresql://agent:agent@localhost:5432/agent
+docker --version >nul 2>&1 && docker compose up -d db >nul 2>&1
+
 REM Build frontend if missing 若無打包檔則先打包
 if not exist frontend\dist\index.html (
   pushd frontend & call npm run build & popd

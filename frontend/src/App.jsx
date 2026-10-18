@@ -5,6 +5,7 @@ import zhTW from 'antd/locale/zh_TW';
 import { MoonOutlined, RobotOutlined, SunOutlined, TeamOutlined } from '@ant-design/icons';
 import ChatPage from './pages/ChatPage.jsx';
 import DebatePage from './pages/DebatePage.jsx';
+import ChatWidget from './components/ChatWidget.jsx';
 import { getJSON } from './api.js';
 import { load, save } from './store.js';
 
@@ -24,7 +25,7 @@ export default function App() {
 
   const ok = health?.ollama?.ollama_running;
   const status = !health ? ['error', '後端離線 Backend offline']
-    : !ok ? ['warning', 'Ollama 未啟動 offline'] : ['success', 'Ollama 已連線 online'];
+    : !ok ? ['warning', '本地模型 未啟動 offline'] : ['success', '本地模型 已連線 online'];
 
   return (
     <XProvider
@@ -38,13 +39,13 @@ export default function App() {
         <Layout.Header className="app-header">
           <Space size={10}>
             <div className="logo"><RobotOutlined /></div>
-            <Typography.Text strong style={{ fontSize: 16 }}>Local AI Agent</Typography.Text>
+            <Typography.Text strong className="brand-text" style={{ fontSize: 16 }}>Local AI Agent</Typography.Text>
           </Space>
           <Segmented
             value={page}
             onChange={setPage}
             options={[
-              { value: 'chat', label: '助手 Assistant', icon: <RobotOutlined /> },
+              { value: 'chat', label: 'Will Hsu AI assistant', icon: <RobotOutlined /> },
               { value: 'debate', label: '辯論 Debate', icon: <TeamOutlined /> },
             ]}
           />
@@ -58,6 +59,7 @@ export default function App() {
         <Layout.Content className="app-content">
           {page === 'chat' ? <ChatPage dark={dark} /> : <DebatePage />}
         </Layout.Content>
+        <ChatWidget dark={dark} />
       </Layout>
     </XProvider>
   );

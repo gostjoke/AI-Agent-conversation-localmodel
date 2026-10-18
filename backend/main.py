@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from agents import AGENTS, build_agent_prompt
 from assistant import DEFAULT_SYSTEM_PROMPT, run_assistant
 from tools import WORKSPACE, tool_list
+import rag  # noqa: E402
 
 # ── Configuration 設定（可用環境變數覆蓋）────────────────────────────────────
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -40,8 +41,20 @@ DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+RAG_ENABLED = rag.register_tools()  # search_docs etc. if DATABASE_URL reachable 連得到 DB 才啟用
+
 app = FastAPI(title="Local AI Agent", version="2.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def no_cache_html(request, call_next):
+    """index.html never cached → new builds show immediately; hashed /assets/ can cache.
+    首頁不快取，重新打包後立即生效；/assets/ 檔名含 hash 可快取。"""
+    resp = await call_next(request)
+    if not request.url.path.startswith(("/assets/", "/api/")):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 # ── Ollama helpers ────────────────────────────────────────────────────────────
@@ -101,7 +114,7 @@ async def api_models():
 
 @app.get("/api/tools")
 async def api_tools():
-    return {"tools": tool_list(), "workspace": str(WORKSPACE),
+    return {"tools": tool_list(), "workspace": str(WORKSPACE), "rag": RAG_ENABLED and rag.RAG_MODE,
             "default_system_prompt": DEFAULT_SYSTEM_PROMPT}
 
 
@@ -130,7 +143,7 @@ async def api_chat(req: ChatRequest):
             ):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
         except httpx.ConnectError:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Ollama 未啟動 (not running): ollama serve'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': '本地模型未啟動 Local model not running (ollama serve)'})}\n\n"
         except Exception as e:
             log.error("chat error: %s", e)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
@@ -155,7 +168,7 @@ async def conversation_ws(websocket: WebSocket):
             return
         s = await ollama_models()
         if not s["ollama_running"]:
-            await websocket.send_json({"type": "error", "message": "Ollama is not running."})
+            await websocket.send_json({"type": "error", "message": "本地模型未啟動 Local model not running."})
             return
         if not _has_model(s["models"], model):
             await websocket.send_json({"type": "error", "message": f"Model '{model}' not found. Run: ollama pull {model}"})
