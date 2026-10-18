@@ -40,6 +40,39 @@ cd frontend && npm install && npm run build && cd ..
 python backend/main.py          # → http://localhost:8000
 ```
 
+## Docker 部署 (Nginx + FastAPI)
+
+```
+Browser ─► :8080 Nginx (frontend container: React dist + reverse proxy)
+              ├─ /api, /health ─► backend:8000 (FastAPI)   SSE 已關閉緩衝 buffering off
+              └─ /ws/          ─► backend:8000 (WebSocket)
+backend ─► Ollama  (host 主機 / or ollama container 容器)
+```
+
+```bash
+cp .env.example .env                       # optional 選用
+docker compose up -d --build               # 使用主機 Ollama → http://localhost:8080
+docker compose --profile gpu up -d --build # Ollama 也跑在容器（NVIDIA GPU）
+docker compose exec ollama ollama pull qwen3:8b   # gpu profile 首次下載模型
+docker compose logs -f backend             # 看後端 log
+docker compose down                        # 停止
+```
+
+| File 檔案 | 說明 |
+|---|---|
+| `backend/Dockerfile` | python:3.12-slim, non-root user, healthcheck |
+| `frontend/Dockerfile` | Multi-stage 多階段: node build → nginx:alpine |
+| `frontend/nginx.conf` | SPA fallback, gzip, asset cache, SSE + WS proxy |
+| `docker-compose.yml` | frontend / backend / ollama(profile `gpu`) |
+| `.env.example` | Port, Ollama URL, models 埠、Ollama 位址、模型 |
+
+Notes 注意:
+- 只有 Nginx 對外開放 port，後端不直接暴露。Only Nginx is published; backend stays on the internal network.
+- **主機 Ollama 連不到 (Ollama offline)**：Windows 預設只聽 127.0.0.1。設定系統環境變數 `OLLAMA_HOST=0.0.0.0` 後重啟 Ollama。Set `OLLAMA_HOST=0.0.0.0` and restart Ollama.
+- **gpu profile** 需要 Docker Desktop (WSL2) + NVIDIA 驅動；`.env` 設 `OLLAMA_BASE_URL=http://ollama:11434`。
+- 沙盒檔案存在 volume `agent-workspace`。Sandbox files persist in the `agent-workspace` volume.
+- 開放給其他人用前請加上登入驗證（目前無 auth）。Add auth before exposing beyond your LAN — there is none yet.
+
 ## Structure 結構
 
 ```

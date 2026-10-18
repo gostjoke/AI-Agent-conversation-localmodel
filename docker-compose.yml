@@ -1,0 +1,45 @@
+# Local AI Agent — docker compose
+#   docker compose up -d --build                  # use Ollama on host 使用主機上的 Ollama
+#   docker compose --profile gpu up -d --build    # also run Ollama in Docker (NVIDIA GPU) 連 Ollama 一起容器化
+# Open http://localhost:8080
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-8080}:80"          # only public port 唯一對外的埠
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      ASSISTANT_MODEL: ${ASSISTANT_MODEL:-qwen3:8b}
+      DEBATE_MODEL: ${DEBATE_MODEL:-gemma3:4b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # reach host Ollama on Linux too Linux 也能連主機
+    volumes:
+      - agent-workspace:/data/workspace      # sandbox files persist 沙盒檔案持久化
+    restart: unless-stopped
+
+  # Optional: Ollama in Docker with GPU. 選用：容器內 Ollama（GPU）
+  # Set OLLAMA_BASE_URL=http://ollama:11434 in .env when using this profile.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["gpu"]
+    volumes:
+      - ollama-models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  agent-workspace:
+  ollama-models:
